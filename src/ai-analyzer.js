@@ -327,6 +327,36 @@ class AIAnalyzer {
             const baseDir = path.join(getDomainPath(process.env.ALLOWED_DOMAIN), 'logs', 'ai', 'matches');
             await fs.mkdir(baseDir, { recursive: true });
 
+            // Format matched terms properly
+            const formattedTerms = data.terms.map(term => ({
+                category: term.category,
+                term: term.term,
+                matchedText: term.matchedText,
+                context: term.context,
+                position: term.position
+            }));
+
+            // Prepare CSV row data with proper term formatting
+            const csvData = {
+                Date: new Date().toLocaleDateString(),
+                Time: new Date().toLocaleTimeString(),
+                URL: data.url,
+                Title: data.title || 'No Title',
+                'Matched Terms': formattedTerms.map(t => 
+                    `${t.category}:${t.term} (${t.matchedText})`
+                ).join('; '),
+                'Context': formattedTerms.map(t => t.context).join(' | '),
+                'AI Analysis': data.aiAnalysis.replace(/[\r\n]+/g, ' '),
+                'Timestamp': timestamp
+            };
+
+            // For JSON output, include full term details
+            const jsonData = {
+                ...data,
+                matchedTerms: formattedTerms,
+                timestamp
+            };
+
             // Check all output files for duplicates first
             const jsonPath = path.join(baseDir, 'ai_matches.json');
             const csvPath = path.join(baseDir, 'ai_matches.csv');
@@ -355,22 +385,6 @@ class AIAnalyzer {
             }
 
             // If we get here, the URL is not a duplicate
-            // Format date and time for Excel
-            const dateObj = new Date();
-            const dateFound = dateObj.toLocaleDateString();
-            const timeFound = dateObj.toLocaleTimeString();
-
-            // Prepare CSV row data
-            const csvData = {
-                Date: dateFound,
-                Time: timeFound,
-                URL: data.url,
-                Title: data.title || 'No Title',
-                'Matched Terms': data.terms.join('; '),
-                'AI Analysis': data.aiAnalysis.replace(/[\r\n]+/g, ' '),
-                'Timestamp': timestamp
-            };
-
             // Create CSV header if file doesn't exist
             let csvExists = false;
             try {
@@ -407,10 +421,7 @@ class AIAnalyzer {
                 // File doesn't exist or is invalid
             }
 
-            matches.push({
-                ...data,
-                timestamp
-            });
+            matches.push(jsonData);
 
             await fs.writeFile(jsonPath, JSON.stringify(matches, null, 2));
 

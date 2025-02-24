@@ -21,6 +21,7 @@ const skipDomains = [
     'libanswers.usm.maine.edu',
     'owls.umpi.edu',
     'wp.umpi.edu',
+    'umalibguides.uma.edu',
     'intermedia.umaine.edu'
 ];
 
@@ -28,6 +29,7 @@ const skipUrlPatterns = [
     '/events/month/',
     '/news/tag',
     '/directories/',
+    '/directory/',
     '/events/week/',
     '/events/day/',
     '/calendar/',

@@ -76,6 +76,8 @@ class URLManager {
         setInterval(() => {
             this.logger.debug(`Current state: ${this.visitedUrls.size} visited, ${this.queue.length} queued, ${this.inProgress.size} in progress`);
         }, 10000);
+
+        this._saveInterval = null;  // Add reference to interval
     }
 
     async initialize() {
@@ -240,6 +242,17 @@ class URLManager {
     hasNext() {
         return this.queue.length > 0;
     }
+
+    async shutdown() {
+        // Clear the auto-save interval
+        if (this._saveInterval) {
+            clearInterval(this._saveInterval);
+            this._saveInterval = null;
+        }
+        // Save state one final time
+        await this.saveState();
+        this.logger.info('URL Manager shutdown complete');
+    }
 }
 
 // Use these loggers in the code
@@ -274,6 +287,8 @@ class ContentCrawler {
         
         this.browser = null;
         this.isShuttingDown = false;
+        this.stopWhenEmpty = process.env.STOP_WHEN_EMPTY !== 'false';
+        this.logger.info(`STOP_WHEN_EMPTY is set to: ${this.stopWhenEmpty}`);
 
         // Add signal handling
         process.on('SIGINT', async () => {
@@ -387,23 +402,9 @@ class ContentCrawler {
                         context: `...${context}...`,
                         position: index
                     });
-                    
-                    this.logger.debug(`Found term "${term}" in category "${category}"`, {
-                        context: `...${context}...`,
-                        position: index
-                    });
                 }
             }
         }
-        
-        if (foundTerms.length > 0) {
-            this.logger.info(`Found ${foundTerms.length} DEI terms:`, { 
-                terms: foundTerms.map(t => `${t.category}:${t.term}`),
-                textLength: text.length,
-                preview: text.substring(0, 200) + '...'
-            });
-        }
-        
         return foundTerms;
     }
 
@@ -416,7 +417,7 @@ class ContentCrawler {
         }
     }
 
-    async addToAIQueue(url, content, terms) {
+    async addToAIQueue(url, content, terms, title) {
         try {
             let aiQueue = [];
             try {
@@ -445,12 +446,19 @@ class ContentCrawler {
                 this.logger.debug('No existing matches file found');
             }
 
-            // Add to queue with the found terms
+            // Add to queue with the found terms and their context
             aiQueue.push({
                 url,
                 content,
+                title,
                 added: Date.now(),
-                terms: terms.map(t => ({ category: t.category, term: t.term }))
+                terms: terms.map(t => ({
+                    category: t.category,
+                    term: t.term,
+                    matchedText: content.slice(t.position, t.position + t.term.length),
+                    context: t.context,
+                    position: t.position
+                }))
             });
 
             await fs.writeFile(this.aiQueuePath, JSON.stringify(aiQueue, null, 2));
@@ -568,8 +576,7 @@ class ContentCrawler {
             const foundTerms = await this.searchForTerms(content.text);
             
             if (foundTerms.length > 0) {
-                // Change this line
-                await this.addToAIQueue(url, content.text, foundTerms);
+                await this.addToAIQueue(url, content.text, foundTerms, title);
             }
 
             // Extract and queue new URLs if not at max depth
@@ -726,27 +733,47 @@ class ContentCrawler {
 
     async shutdown() {
         if (this.isShuttingDown) {
-            return; // Prevent multiple shutdown attempts
+            this.logger.info('Shutdown already in progress...');
+            return;
         }
         
         this.isShuttingDown = true;
         this.logger.info('Shutting down crawler...');
-        
+
         try {
-            // Save final state
+            // Stop URL Manager first
             this.logger.info('Saving final crawler state...');
-            await this.urlManager.saveState();
-            
+            await this.urlManager.shutdown();
+
             // Close browser
+            this.logger.info('Closing browser...');
             if (this.browser) {
-                this.logger.info('Closing browser...');
                 await this.browser.close();
+                this.browser = null;
             }
-            
+
             this.logger.info('Crawler shutdown complete');
+            
+            // Exit process if stopWhenEmpty is true
+            if (this.stopWhenEmpty) {
+                process.exit(0);
+            }
         } catch (error) {
             this.logger.error('Error during shutdown:', error);
+            process.exit(1);
         }
+    }
+
+    // Update signal handlers
+    setupSignalHandlers() {
+        const handleSignal = async (signal) => {
+            this.logger.info(`Received ${signal} signal`);
+            await this.shutdown();
+        };
+
+        process.on('SIGINT', () => handleSignal('SIGINT'));
+        process.on('SIGTERM', () => handleSignal('SIGTERM'));
+        process.on('SIGHUP', () => handleSignal('SIGHUP'));
     }
 }
 
