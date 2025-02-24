@@ -1,0 +1,22 @@
+{
+  "name": "web-crawler",
+  "version": "1.0.0",
+  "description": "DEI content crawler",
+  "main": "start.js",
+  "scripts": {
+    "crawl": "node crawl.js",
+    "ai": "node AI_Confirm.js",
+    "clean": "node clean-queue.js",
+    "queuestats": "node analyze-queue.js",
+    "kill": "taskkill /F /IM node.exe"
+  },
+  "dependencies": {
+    "@google/generative-ai": "latest",
+    "chokidar": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "puppeteer": "latest",
+    "winston": "latest",
+    "ws": "latest"
+  }
+}

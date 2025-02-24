@@ -1,0 +1,32 @@
+# Crawl output directories
+crawl_results/
+search_results/
+output/
+
+# Environment variables
+.env
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Domain specific data
+umaine.edu/
+
+# Don't ignore these
+!state/
+!state/crawler-state.json
+!logs/matches/
