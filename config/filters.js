@@ -26,9 +26,13 @@ const skipDomains = [
 
 const skipUrlPatterns = [
     '/events/month/',
+    '/news/tag',
+    '/directories/',
     '/events/week/',
     '/events/day/',
     '/calendar/',
+    '/special-collections/',
+    '/calendar-of-events/',
     'outlook-ical=',
     'ical=',
     'vcalendar=',

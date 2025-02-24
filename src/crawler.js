@@ -10,7 +10,7 @@ require('dotenv').config();
 
 // At the top, add domain-based path helper
 const getDomainPath = (domain) => {
-    return path.join(process.cwd(), domain.replace(/^www\./, ''));
+    return path.join(process.cwd(), process.env.CRAWL_OUTPUT_DIR, domain.replace(/^www\./, ''));
 };
 
 // Configure loggers
@@ -51,8 +51,12 @@ const matchLogger = winston.createLogger({
 (async () => {
     const domain = process.env.ALLOWED_DOMAIN;
     const basePath = getDomainPath(domain);
-    await fs.mkdir(path.join(basePath, 'logs', 'matches'), { recursive: true });
-    await fs.mkdir(path.join(basePath, 'state'), { recursive: true });
+    // Create all required directories
+    await Promise.all([
+        fs.mkdir(path.join(basePath, 'logs', 'matches'), { recursive: true }),
+        fs.mkdir(path.join(basePath, 'logs', 'ai', 'matches'), { recursive: true }),
+        fs.mkdir(path.join(basePath, 'state'), { recursive: true })
+    ]);
 })();
 
 class URLManager {
@@ -261,7 +265,7 @@ class ContentCrawler {
         };
         
         this.urlManager = new URLManager(
-            path.join(getDomainPath(process.env.ALLOWED_DOMAIN), 'state', 'crawler-state.json'),
+            path.join(this.basePath, 'state', 'crawler-state.json'),
             parseInt(process.env.MAX_URLS) || 10000,
             this.logger,
             this.shouldCrawl.bind(this),
@@ -412,7 +416,7 @@ class ContentCrawler {
         }
     }
 
-    async addToAIQueue(url, content) {
+    async addToAIQueue(url, content, terms) {
         try {
             let aiQueue = [];
             try {
@@ -441,16 +445,16 @@ class ContentCrawler {
                 this.logger.debug('No existing matches file found');
             }
 
-            // Add to queue if not already present
+            // Add to queue with the found terms
             aiQueue.push({
                 url,
                 content,
                 added: Date.now(),
-                terms: [] // Initialize empty terms array
+                terms: terms.map(t => ({ category: t.category, term: t.term }))
             });
 
             await fs.writeFile(this.aiQueuePath, JSON.stringify(aiQueue, null, 2));
-            this.logger.info(`Added to AI queue: ${url}`);
+            this.logger.info(`Added to AI queue: ${url} with ${terms.length} terms`);
 
         } catch (error) {
             this.logger.error(`Error adding to AI queue: ${error}`);
@@ -564,8 +568,8 @@ class ContentCrawler {
             const foundTerms = await this.searchForTerms(content.text);
             
             if (foundTerms.length > 0) {
-                // Remove AI analysis and logging
-                await this.addToAIQueue(url, content.text);
+                // Change this line
+                await this.addToAIQueue(url, content.text, foundTerms);
             }
 
             // Extract and queue new URLs if not at max depth

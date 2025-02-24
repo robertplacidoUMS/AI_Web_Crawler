@@ -4,78 +4,81 @@ const { getDomainPath } = require('./src/utils/utils');
 const { shouldFilter } = require('./config/filters');
 require('dotenv').config();
 
+// Remove this since we're importing it above
+// const getDomainPath = (domain) => {
+//     return path.join(process.cwd(), process.env.CRAWL_OUTPUT_DIR, domain.replace(/^www\./, ''));
+// };
+
 async function cleanQueue() {
-    const domain = process.env.ALLOWED_DOMAIN;
-    const basePath = getDomainPath(domain);
-    const queuePath = path.join(basePath, 'state', 'crawler-state.json');
-    const aiQueuePath = path.join(basePath, 'state', 'ai_queue.json');
-
     try {
-        console.log('Starting queue cleanup...');
-
-        // Read current state
-        const stateData = await fs.readFile(queuePath, 'utf8');
-        const state = JSON.parse(stateData);
-        
-        // Debug state structure
-        console.log('\nState Structure:');
-        console.log('---------------');
-        console.log('Queue type:', typeof state.queue);
-        console.log('Queue is array:', Array.isArray(state.queue));
-        if (state.queue.length > 0) {
-            console.log('First queue item:', JSON.stringify(state.queue[0], null, 2));
+        if (!process.env.CRAWL_OUTPUT_DIR || !process.env.ALLOWED_DOMAIN) {
+            console.error('Error: Required environment variables not set');
+            process.exit(1);
         }
 
-        // Debug URL filtering
-        const testUrl = "https://go.umaine.edu/events/category/umaine-in-your-area/day/2024-10-26";
-        console.log('\nTesting URL Filter:');
-        console.log('------------------');
-        console.log('Test URL:', testUrl);
-        console.log('Should filter:', shouldFilter(testUrl));
+        const domain = process.env.ALLOWED_DOMAIN;
+        const basePath = getDomainPath(domain);
+        
+        // Create directories if they don't exist
+        await fs.mkdir(path.join(basePath, 'state'), { recursive: true });
+        
+        // Define paths
+        const crawlerStatePath = path.join(basePath, 'state', 'crawler-state.json');
+        const backupPath = crawlerStatePath + '.backup';
 
-        // Read AI queue
-        let aiQueue = [];
+        console.log('Reading crawler state file...');
+        console.log('State path:', crawlerStatePath);
+        
+        // Create backup of original state
         try {
-            const aiQueueData = await fs.readFile(aiQueuePath, 'utf8');
-            aiQueue = JSON.parse(aiQueueData);
+            await fs.copyFile(crawlerStatePath, backupPath);
+            console.log('Created backup of original crawler state');
         } catch (error) {
-            console.log('No existing AI queue found, will create new');
+            console.warn('Could not create backup:', error.message);
         }
 
-        const originalQueueSize = state.queue.length;
-        const originalVisitedSize = state.visited.length;
+        // Read crawler state
+        let crawlerState = { queue: [], visited: [] };
+        try {
+            const stateData = await fs.readFile(crawlerStatePath, 'utf8');
+            crawlerState = JSON.parse(stateData);
+            console.log(`Found ${crawlerState.queue.length} items in queue`);
+            console.log(`Found ${crawlerState.visited.length} visited URLs`);
+        } catch (error) {
+            console.warn('Could not read crawler state:', error.message);
+            return;
+        }
 
-        // Filter queue (handle queue items as objects with url property)
-        const filteredQueue = state.queue.filter(item => !shouldFilter(item.url));
-        const removedUrls = state.queue.filter(item => shouldFilter(item.url))
-            .map(item => item.url);  // Get just the URLs
+        // Clean the queue based on current filters
+        const originalQueueSize = crawlerState.queue.length;
+        const filteredUrls = [];
 
-        // Add filtered URLs to visited (make sure visited list only contains URLs)
-        // First clean up any objects in visited list
-        const cleanVisited = state.visited.map(item => typeof item === 'string' ? item : item.url);
-        // Then add new URLs
-        state.visited = [...new Set([...cleanVisited, ...removedUrls])];
-        state.queue = filteredQueue;
+        for (const item of crawlerState.queue) {
+            if (shouldFilter(item.url)) {
+                // URL should be filtered - move to visited
+                crawlerState.visited.push(item.url);
+                filteredUrls.push(item.url);
+            }
+        }
 
-        // Remove filtered URLs from AI queue
-        aiQueue = aiQueue.filter(item => !shouldFilter(item.url));
+        // Remove filtered URLs from queue
+        crawlerState.queue = crawlerState.queue.filter(item => !shouldFilter(item.url));
 
-        // Save updated state
-        await fs.writeFile(queuePath, JSON.stringify(state, null, 2));
-        await fs.writeFile(aiQueuePath, JSON.stringify(aiQueue, null, 2));
-
-        // Log results
-        console.log('\nCleanup Results:');
-        console.log('----------------');
+        console.log('\nCleaning Results:');
         console.log(`Original queue size: ${originalQueueSize}`);
-        console.log(`URLs removed: ${removedUrls.length}`);
-        console.log(`New queue size: ${state.queue.length}`);
-        console.log(`Original visited size: ${originalVisitedSize}`);
-        console.log(`New visited size: ${state.visited.length}`);
-        console.log(`AI queue size: ${aiQueue.length}`);
+        console.log(`URLs moved to visited: ${filteredUrls.length}`);
+        console.log(`New queue size: ${crawlerState.queue.length}`);
         
-        console.log('\nExample URLs removed:');
-        removedUrls.slice(0, 5).forEach(url => console.log(`- ${url}`));
+        if (filteredUrls.length > 0) {
+            console.log('\nSample of filtered URLs:');
+            filteredUrls.slice(0, 5).forEach(url => console.log(`- ${url}`));
+        }
+
+        // Save cleaned state
+        await fs.writeFile(crawlerStatePath, JSON.stringify(crawlerState, null, 2));
+        console.log('\nSaved cleaned crawler state');
+        console.log(`Original state backed up to: ${backupPath}`);
+        console.log('Queue cleaning complete!');
 
     } catch (error) {
         console.error('Error cleaning queue:', error);
@@ -83,7 +86,4 @@ async function cleanQueue() {
     }
 }
 
-cleanQueue().then(() => {
-    console.log('\nQueue cleanup completed successfully');
-    process.exit(0);
-}); 
+cleanQueue().catch(console.error); 

@@ -8,7 +8,7 @@ const { extractPageContent } = require('./utils/content-extractor');
 const { DEI_PROMPT } = require('../config/prompts');
 require('dotenv').config();
 
-// Configure AI-specific loggers
+// Update logger paths
 const aiSystemLogger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
     format: winston.format.combine(
@@ -44,7 +44,7 @@ const aiMatchLogger = winston.createLogger({
     ]
 });
 
-// Create AI log directories
+// Update directory creation
 (async () => {
     const domain = process.env.ALLOWED_DOMAIN;
     const basePath = getDomainPath(domain);
@@ -184,32 +184,33 @@ class AIAnalyzer {
                 
                 try {
                     // Add current item to state before processing
-                    // so we know where to resume
                     this.state.lastProcessed = item.url;
                     await this.saveState();
 
-                    const aiResult = await this.analyzeWithAI(item.content, item.url);
-                    processedCount++;
-                    
-                    // Reset cooldown attempts after successful request
-                    this.cooldownAttempts = 0;
-                    
-                    if (aiResult && aiResult.startsWith('AI_Crawler: Content Found')) {
-                        this.logger.info(`Content Found: ${item.url}`);
-                        await this.logMatch({
-                            url: item.url,
-                            title: item.title,
-                            terms: item.terms,
-                            aiAnalysis: aiResult,
-                            timestamp: new Date().toISOString()
-                        });
-                    } else {
-                        this.logger.info(`No Content Found in: ${item.url}`);
+                    // Add URL to processed list BEFORE processing
+                    if (!this.state.processed.includes(item.url)) {
+                        this.state.processed.push(item.url);
+                        await this.saveState();
+                        
+                        const aiResult = await this.analyzeWithAI(item.content, item.url);
+                        processedCount++;
+                        
+                        // Reset cooldown attempts after successful request
+                        this.cooldownAttempts = 0;
+                        
+                        if (aiResult && aiResult.startsWith('AI_Crawler: Content Found')) {
+                            this.logger.info(`Content Found: ${item.url}`);
+                            await this.logMatch({
+                                url: item.url,
+                                title: item.title,
+                                terms: item.terms,
+                                aiAnalysis: aiResult,
+                                timestamp: new Date().toISOString()
+                            });
+                        } else {
+                            this.logger.info(`No Content Found in: ${item.url}`);
+                        }
                     }
-                    
-                    // Don't keep successfully processed items
-                    this.state.processed.push(item.url);
-                    await this.saveState();
                     
                 } catch (error) {
                     failedCount++;
@@ -326,6 +327,34 @@ class AIAnalyzer {
             const baseDir = path.join(getDomainPath(process.env.ALLOWED_DOMAIN), 'logs', 'ai', 'matches');
             await fs.mkdir(baseDir, { recursive: true });
 
+            // Check all output files for duplicates first
+            const jsonPath = path.join(baseDir, 'ai_matches.json');
+            const csvPath = path.join(baseDir, 'ai_matches.csv');
+            
+            // Check JSON file
+            try {
+                const jsonData = await fs.readFile(jsonPath, 'utf8');
+                const matches = JSON.parse(jsonData);
+                if (matches.some(match => match.url === data.url)) {
+                    this.logger.debug(`URL ${data.url} already in JSON matches, skipping`);
+                    return;
+                }
+            } catch (error) {
+                // File doesn't exist or is invalid - that's ok
+            }
+
+            // Check CSV file
+            try {
+                const csvData = await fs.readFile(csvPath, 'utf8');
+                if (csvData.includes(data.url)) {
+                    this.logger.debug(`URL ${data.url} already in CSV matches, skipping`);
+                    return;
+                }
+            } catch (error) {
+                // File doesn't exist - that's ok
+            }
+
+            // If we get here, the URL is not a duplicate
             // Format date and time for Excel
             const dateObj = new Date();
             const dateFound = dateObj.toLocaleDateString();
@@ -342,8 +371,7 @@ class AIAnalyzer {
                 'Timestamp': timestamp
             };
 
-            // Save to AI-specific CSV
-            const csvPath = path.join(baseDir, 'ai_matches.csv');
+            // Create CSV header if file doesn't exist
             let csvExists = false;
             try {
                 await fs.access(csvPath);
@@ -371,7 +399,6 @@ class AIAnalyzer {
             await fs.appendFile(csvPath, csvRow, 'utf-8');
 
             // Log to AI-specific JSON file
-            const jsonPath = path.join(baseDir, 'ai_matches.json');
             let matches = [];
             try {
                 const jsonData = await fs.readFile(jsonPath, 'utf8');

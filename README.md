@@ -354,6 +354,30 @@ npm run kill
 ```
 
 ### Typical Workflow
+   - Update variables with your settings:
+     - `START_URL`: www.example.edu
+     - `ALLOWED_DOMAIN`: example.edu
+     - `GOOGLE_API_KEY`: Your Gemini AI API key
+Set filters in config/filters.js
+For example:
+const skipDomains = [
+    'library.',
+    'libguides.',
+    'calendar.',
+    'gradcatalog.',
+    'digitalcommons.',
+    'archives.',
+    'lib.',
+    'cloudfront.net']
+
+Set prompt in config/prompts.js
+For example:
+const DEI_PROMPT = {
+    preamble: `
+        Analyze this webpage content to determine if it is about Diversity, 
+        Equity, and Inclusion (DEI) topics.
+
+
 
 1. Edit your environment variables:
 ```bash
@@ -366,7 +390,7 @@ npm run queuestats
 ```
 Examine the results for filters you may want to add to the filters index.js file.
 
-3. I fyou create new filters after a crawl has started, Clean the URL queues with new filters:
+3. If you create new filters after a crawl has started, you can clean the URL queues with new filters:
 ```bash
 npm run clean
 ```
