@@ -22,6 +22,8 @@ const skipDomains = [
     'owls.umpi.edu',
     'wp.umpi.edu',
     'umalibguides.uma.edu',
+    'store.umf.maine.edu',
+    'scholarworks.umf.maine.edu',
     'intermedia.umaine.edu'
 ];
 
@@ -32,6 +34,7 @@ const skipUrlPatterns = [
     '/directory/',
     '/events/week/',
     '/events/day/',
+    '/do/',
     '/calendar/',
     '/special-collections/',
     '/calendar-of-events/',
