@@ -2,6 +2,23 @@ const path = require('path');
 
 const skipDomains = [
     'catalog.',
+    // University of Maine System block when running on a single domain ormaine.edu
+    'umpi.maine.edu',
+    'umf.maine.edu',
+    'usm.maine.edu',
+    'umaine.maine.edu',
+    'uma.maine.edu',
+    'umm.maine.edu',
+    'umfk.maine.edu',
+    'mainelaw.maine.edu',
+    'umpi.edu',
+    'umf.edu',
+    'usm.edu',
+    'umaine.edu',
+    'uma.edu',
+    'umm.edu',
+    'umfk.edu',
+    // University of Maine System block when running on a single domain ormaine.edu
     'cloudfront.net',
     'cdn.',
     'static.',
@@ -119,7 +136,12 @@ function shouldFilter(urlString) {
         const urlObj = new URL(urlString);
         
         // Check domain patterns
-        if (skipDomains.some(domain => urlObj.hostname.startsWith(domain))) {
+        if (skipDomains.some(domain => {
+            // Match exact domain or any subdomain
+            return urlObj.hostname === domain || 
+                   urlObj.hostname.endsWith('.' + domain) ||
+                   domain.endsWith('.' + urlObj.hostname);
+        })) {
             return true;
         }
 

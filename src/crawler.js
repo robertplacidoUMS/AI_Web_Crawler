@@ -76,8 +76,6 @@ class URLManager {
         setInterval(() => {
             this.logger.debug(`Current state: ${this.visitedUrls.size} visited, ${this.queue.length} queued, ${this.inProgress.size} in progress`);
         }, 10000);
-
-        this._saveInterval = null;  // Add reference to interval
     }
 
     async initialize() {
@@ -241,17 +239,6 @@ class URLManager {
 
     hasNext() {
         return this.queue.length > 0;
-    }
-
-    async shutdown() {
-        // Clear the auto-save interval
-        if (this._saveInterval) {
-            clearInterval(this._saveInterval);
-            this._saveInterval = null;
-        }
-        // Save state one final time
-        await this.saveState();
-        this.logger.info('URL Manager shutdown complete');
     }
 }
 
@@ -733,47 +720,27 @@ class ContentCrawler {
 
     async shutdown() {
         if (this.isShuttingDown) {
-            this.logger.info('Shutdown already in progress...');
-            return;
+            return; // Prevent multiple shutdown attempts
         }
         
         this.isShuttingDown = true;
         this.logger.info('Shutting down crawler...');
-
+        
         try {
-            // Stop URL Manager first
+            // Save final state
             this.logger.info('Saving final crawler state...');
-            await this.urlManager.shutdown();
-
-            // Close browser
-            this.logger.info('Closing browser...');
-            if (this.browser) {
-                await this.browser.close();
-                this.browser = null;
-            }
-
-            this.logger.info('Crawler shutdown complete');
+            await this.urlManager.saveState();
             
-            // Exit process if stopWhenEmpty is true
-            if (this.stopWhenEmpty) {
-                process.exit(0);
+            // Close browser
+            if (this.browser) {
+                this.logger.info('Closing browser...');
+                await this.browser.close();
             }
+            
+            this.logger.info('Crawler shutdown complete');
         } catch (error) {
             this.logger.error('Error during shutdown:', error);
-            process.exit(1);
         }
-    }
-
-    // Update signal handlers
-    setupSignalHandlers() {
-        const handleSignal = async (signal) => {
-            this.logger.info(`Received ${signal} signal`);
-            await this.shutdown();
-        };
-
-        process.on('SIGINT', () => handleSignal('SIGINT'));
-        process.on('SIGTERM', () => handleSignal('SIGTERM'));
-        process.on('SIGHUP', () => handleSignal('SIGHUP'));
     }
 }
 
